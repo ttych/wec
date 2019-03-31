@@ -1,0 +1,237 @@
+#!/bin/sh
+# -*- mode: sh -*-
+
+set -x
+
+WEC_UID=`id -u`
+WEC_DIR="/tmp/emacs${WEC_UID}"
+WEC_MAPPING_NAME="_daemon_mapping"
+WEC_MAPPING="${WEC_DIR}/${WEC_MAPPING_NAME}"
+
+_emacs()
+{
+    emacs "$@"
+}
+
+_emacsclient()
+{
+    emacsclient "$@"
+}
+
+_emacs_daemon_create()
+{
+    [ $# -ne 2 ] && return 1
+    _emacs_daemon_create__n="${1}"
+    _emacs_daemon_create__p="${2:-$PWD}"
+    if [ -z "$_emacs_daemon_create__n" ]; then
+        _emacs_daemon_create__n="${_emacs_daemon_create__p##*/}"
+    fi
+
+    if _emacs_daemon_exist "$_emacs_daemon_create__n"; then
+        echo >&2 "emacs daemon $_emacs_daemon_create__n already exists"
+        return 1
+    fi
+
+    (cd "$_emacs_daemon_create_p" ; _emacs --daemon="$_emacs_daemon_create__n") &&
+        echo "$_emacs_daemon_create__n $_emacs_daemon_create__p" >> "$WEC_MAPPING"
+}
+
+_emacs_daemon_list()
+(
+    printf "List of daemons is :\n"
+    cd "$WEC_DIR" 2>/dev/null || return 0
+    for _emacs_daemon_list__d in *; do
+        if [ "$_emacs_daemon_list__d" = "${WEC_MAPPING_NAME}" ]; then
+            continue
+        fi
+        _emacs_daemon_list__p=`grep "^$_emacs_daemon_list__d " "$WEC_MAPPING"`
+        _emacs_daemon_list__p="${_emacs_daemon_list__p#* }"
+
+        printf "%s -> %s\n" "$_emacs_daemon_list__d" "$_emacs_daemon_list__p"
+    done
+)
+
+_emacs_daemon_exist()
+{
+    [ -z "$1" ] && return 2
+    [ -r "$WEC_DIR/$1" ] && return 0
+    return 1
+}
+
+_emacs_daemon_for_path()
+{
+    _emacs_daemon_for_path=`grep "$1\$" "$WEC_MAPPING"`
+    [ $? -ne 0 ] && return 1
+    _emacs_daemon_for_path="${_emacs_daemon_for_path%% *}"
+    return 0
+}
+
+_emacs_daemon_kill()
+{
+    [ -z "$1" ] && return 1
+    _emacsclient -s "$1" -e '(kill-emacs)'
+
+    _emacs_daemon_purge
+}
+
+_emacs_daemon_save_kill()
+{
+    [ -z "$1" ] && return 1
+    _emacsclient -s "$1" -t  -e '(client-save-kill-emacs)'
+
+    _emacs_daemon_purge
+}
+
+_emacs_daemon_purge()
+{
+    [ -r "$WEC_MAPPING" ] || return 0
+    touch "$WEC_MAPPING".new
+    while read _emacs_daemon_purge__e; do
+        _emacs_daemon_purge__d="${_emacs_daemon_purge__e%% *}"
+        if [ -r "$WEC_DIR/$_emacs_daemon_purge__d" ]; then
+            echo "$_emacs_daemon_purge__e" >> "$WEC_MAPPING".new
+        fi
+    done < "$WEC_MAPPING"
+    mv "$WEC_MAPPING".new "$WEC_MAPPING"
+}
+
+_wec_help()
+{
+    cat <<EOF >&2
+Usage is :
+  $0 ...
+
+with :
+   ...
+EOF
+}
+
+_wec_list()
+{
+    _emacs_daemon_list
+}
+
+_wec_kill_all()
+{
+    [ -r "$WEC_MAPPING" ] || return 0
+
+    while read _wec_kill_all__entry; do
+        _wec_kill_all__d="${_wec_kill_all__entry%% *}"
+        _emacs_daemon_kill "$_wec_kill_all__d"
+    done < "$WEC_MAPPING"
+}
+
+_wec_kill()
+{
+    if [ $# -gt 0 ]; then
+        for _wec_kill__d; do
+            _emacs_daemon_kill "$_wec_kill__d"
+        done
+    else
+        _wec_kill_all
+    fi
+}
+
+_wec_save_kill_all()
+{
+    [ -r "$WEC_MAPPING" ] || return 0
+
+    while read _wec_save_kill_all__entry; do
+        _wec_save_kill_all__d="${_wec_save_kill_all__entry%% *}"
+        _emacs_daemon_save_kill "$_wec_save_kill_all__d"
+    done < "$WEC_MAPPING"
+}
+
+_wec_save_kill()
+{
+    if [ $# -gt 0 ]; then
+        for _wec_save_kill__d; do
+            _emacs_daemon_save_kill "$_wec_save_kill__d"
+        done
+    else
+        _wec_save_kill_all
+    fi
+}
+
+_wec_daemon()
+{
+    _wec_daemon__name="${_wec__daemon}"
+    if [ -z "$_wec_daemon__name" ]; then
+        _wec_daemon__name="${PWD##*/}"
+    fi
+    _wec_daemon__path="${1:-$PWD}"
+
+    _emacs_daemon_create "$_wec_daemon__name" "$_wec_daemon__path"
+}
+
+_wec_daemon_for_file()
+{
+    _wec_daemon_for_file__p="${1%/*}"
+    if [ -z "$_wec_daemon_for_file__p" ]; then
+        _wec_daemon_for_file__p=/
+    elif [ "$_wec_daemon_for_file__p" = "$1" ] ; then
+        _wec_daemon_for_file__p=.
+    fi
+    _wec_daemon_for_file__p=$(cd "$_wec_daemon_for_file__p" && echo "$PWD")
+
+    _wec_daemon_for_file__found=$(
+        sort -k 2 -r "$WEC_MAPPING" |
+            while read _wec_daemon_for_file__r_d _wec_daemon_for_file__r_p; do
+                case "$_wec_daemon_for_file__p" in
+                    "$_wec_daemon_for_file__r_p"|"$_wec_daemon_for_file__r_p/*")
+                        echo "$_wec_daemon_for_file__r_d"
+                        break
+                        ;;
+                esac
+            done
+    )
+
+    [ -z "$_wec_daemon_for_file__found" ] && return 1
+
+    _wec_daemon_for_file="$_wec_daemon_for_file__found"
+}
+
+_wec_edit()
+{
+    # which daemon
+    # - daemon
+    # - file
+    # - pwd
+    _wec_edit__daemon=
+    if [ -n "$_wec__daemon" ]; then
+        _wec_edit__daemon="${_wec__daemon}"
+    elif [ -n "$1" ]; then
+        _wec_daemon_for_file "$1" || return 1
+        _wec_edit__daemon="$_wec_daemon_for_file"
+    else
+        _wec_edit__daemon="${PWD##*/}"
+    fi
+
+    _emacsclient -s "$_wec_edit__daemon" -t "$@"
+}
+
+_wec()
+{
+    _wec=
+
+    _wec__daemon=
+    _wec__command=edit
+    while getopts :hlkxds: opt; do
+        case $opt in
+            h) _wec__command=help ;;
+            l) _wec__command=list ;;
+            k) _wec__command=kill ;;
+            x) _wec__command=save_kill ;;
+            d) _wec__command=daemon ;;
+            s) _wec__daemon="$OPTARG" ;;
+        esac
+    done
+    shift $(($OPTIND - 1))
+    _wec_${_wec__command} "$@"
+}
+
+case "$0" in
+    */wec)
+        _wec "$@"
+        ;;
+esac
