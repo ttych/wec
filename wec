@@ -178,7 +178,7 @@ _wec_daemon_for_file()
         sort -k 2 -r "$WEC_MAPPING" |
             while read _wec_daemon_for_file__r_d _wec_daemon_for_file__r_p; do
                 case "$_wec_daemon_for_file__p" in
-                    "$_wec_daemon_for_file__r_p"|"$_wec_daemon_for_file__r_p/*")
+                    "$_wec_daemon_for_file__r_p"|"$_wec_daemon_for_file__r_p"/*)
                         echo "$_wec_daemon_for_file__r_d"
                         break
                         ;;
