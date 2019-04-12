@@ -44,7 +44,7 @@ _emacs_daemon_list()
         if [ "$_emacs_daemon_list__d" = "${WEC_MAPPING_NAME}" ]; then
             continue
         fi
-        _emacs_daemon_list__p=`grep "^$_emacs_daemon_list__d " "$WEC_MAPPING"`
+        _emacs_daemon_list__p=`grep -m 1 "^$_emacs_daemon_list__d " "$WEC_MAPPING"`
         _emacs_daemon_list__p="${_emacs_daemon_list__p#* }"
 
         printf "%s -> %s\n" "$_emacs_daemon_list__d" "$_emacs_daemon_list__p"
