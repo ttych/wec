@@ -4,18 +4,22 @@
 #set -x
 
 WEC_UID=`id -u`
-WEC_DIR="/tmp/emacs${WEC_UID}"
+WEC_TMP="${WEC_TMP:-/tmp/`whoami`}"
+set -e
+mkdir -p "${WEC_TMP}" && chmod 0700 "${WEC_TMP}"
+set +e
+WEC_DIR="${WEC_TMP}/emacs${WEC_UID}"
 WEC_MAPPING_NAME="_daemon_mapping"
 WEC_MAPPING="${WEC_DIR}/${WEC_MAPPING_NAME}"
 
 _emacs()
 {
-    emacs "$@"
+    TMPDIR="$WEC_TMP" emacs "$@"
 }
 
 _emacsclient()
 {
-    emacsclient "$@"
+    TMPDIR="$WEC_TMP" emacsclient "$@"
 }
 
 _emacs_daemon_create()
